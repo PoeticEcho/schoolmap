@@ -4,7 +4,7 @@
 
 ![학교 반경과 주변 학원가·아파트를 그린 개념도](dist/assets/og-image.png)
 
-[스쿨맵](https://schoolmap.vercel.app) · [기존 공개 지도](https://hakwon.zap15.chatgpt.site)
+[스쿨맵](https://schoolmap-pearl.vercel.app) · [기존 공개 지도](https://hakwon.zap15.chatgpt.site)
 
 ## 지도 사용법
 
