@@ -83,6 +83,14 @@ function detail() {
   }
 
   const isHub = mode === 'hubs', hub = isHub ? row : H.get(row.hub);
+  if (hub) mountMap(hub, () => renderPlaceDetails(row, hub, isHub));
+  else {
+    renderPlaceDetails(row, hub, isHub);
+    mountTownMap(row);
+  }
+}
+
+function renderPlaceDetails(row, hub, isHub) {
   const name = isHub ? row.name.split(' · ')[0] : row.d;
   const rank = '<span class="rank-badge">전국 ' + fmt(row.nat) + '위</span>';
   let html = '<div class="panelhead"><div class="eyebrow">' + E(isHub ? row.town : row.id) + '</div><div class="place-heading"><h2>' +
@@ -98,8 +106,6 @@ function detail() {
     '<p class="footnote">이 동에서 밀집 기준을 충족한 학원가가 확인되지 않았습니다.</p>';
   if (hub?.parts.includes('대구 수성구 범어동')) html += '<p class="footnote"><a href="beomeo.pdf">범어 보행망 시범 지도</a></p>';
   $('detail').innerHTML = html;
-  if (hub) mountMap(hub);
-  else mountTownMap(row);
 }
 
 $('rankModes').addEventListener('click', event => {
@@ -126,10 +132,11 @@ $('rows').addEventListener('click', event => {
 
 $('mapPanel').addEventListener('click', event => {
   const button = event.target.closest('[data-range]');
-  if (!button) return;
-  distance = Number(button.dataset.range);
-  detail();
-  $('mapPanel').querySelector('[data-range="' + distance + '"]')?.focus({preventScroll: true});
+  if (!button || !updateMapRange) return;
+  const next = Number(button.dataset.range);
+  if (distance === next) return;
+  distance = next;
+  updateMapRange();
 });
 
 $('more').onclick = () => { shown += 60; renderRanking(); };

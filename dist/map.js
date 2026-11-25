@@ -1,8 +1,20 @@
-let street, routeLayers, pending, serial=0, lastQuery=0;
+let street, routeLayers, updateMapRange, pending, serial = 0, lastQuery = 0;
 const remembered=new Map();
 const latLng=p=>[p[1],p[0]];
+const hubRangeRequests = new Map();
+const rangeLabel = meters => meters === 1000 ? '1km' : meters + 'm';
+const areaRanges = [300, 500, 1000];
+const mapPadding = {paddingTopLeft: [20, 108], paddingBottomRight: [20, 26], maxZoom: 17, animate: false};
+
+function stopRoute() {
+  serial++;
+  pending?.abort();
+  pending = null;
+}
+
 function clearMap(){
-  serial++;if(pending)pending.abort();pending=null;
+  stopRoute();
+  updateMapRange = null;
   if(street){lastView={center:street.getCenter(),zoom:street.getZoom()};street.remove();street=null;}
 }
 const schoolIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m2 10 10-7 10 7M4 9v12h16V9M9 21v-6h6v6"/><circle cx="12" cy="9" r="1.5"/></svg>';
@@ -62,74 +74,161 @@ function schoolMarker(ll, name, school) {
   return marker;
 }
 
-function mountMap(g) {
-  const data = g.records || D.maps[g.id];
-  const range = distance === 1000 ? '1km' : distance + 'm';
-  const controls = '<span>' + (g.records ? '학교 반경' : '학원가 경계에서') + '</span>' +
-    [300, 500, 1000].map(meters => '<button type="button" data-range="' + meters + '" aria-pressed="' +
-      (meters === distance) + '">' + (meters === 1000 ? '1km' : meters + 'm') + '</button>').join('');
-  mapFrame(g.name + ' 주변 지도', controls,
-    '<span><i class="swatch hub-swatch"></i>학원가</span><label><input id="showS" type="checkbox" checked><i class="swatch school-swatch"></i>학교</label>' +
-    '<label><input id="showA" type="checkbox" checked><i class="swatch apartment-swatch"></i>아파트</label>' +
-    '<span class="range-key"><i class="swatch band-swatch"></i>직선 ' + range + ' 이내</span>');
-  const m = street = L.map('street', {scrollWheelZoom: false, zoomSnap: 0.25, maxZoom: 19, zoomControl: false, zoomAnimation: false});
+function newStreetMap() {
+  const m = street = L.map('street', {
+    scrollWheelZoom: false, zoomSnap: .25, minZoom: 5, maxZoom: 19, zoomControl: false, zoomAnimation: false
+  });
+  const rangePane = m.createPane('studyRange');
+  rangePane.style.zIndex = 390;
+  rangePane.style.pointerEvents = 'none';
+  m.createPane('academyArea').style.zIndex = 420;
   L.control.zoom({position: 'bottomright'}).addTo(m);
   addStreetTiles(m);
-  const core = g.records ? schoolRings(m, g) : L.geoJSON({type: 'MultiPolygon', coordinates: data.b}, {
-    style: {color: '#00785f', weight: 2, fillOpacity: .23}, interactive: false
+  return m;
+}
+
+function academyBoundary(hub, onClick) {
+  const outline = L.geoJSON({type: 'MultiPolygon', coordinates: D.maps[hub.id].b}, {
+    pane: 'academyArea',
+    style: {color: '#006953', weight: 2.5, fillColor: '#168564', fillOpacity: .31, className: 'academy-boundary'},
+    interactive: Boolean(onClick),
+    bubblingMouseEvents: false
+  }).bindTooltip(E(hub.name), {sticky: Boolean(onClick)});
+  if (onClick) outline.on('click', onClick);
+  return outline;
+}
+
+function placeMarkerGroup(m) {
+  return L.markerClusterGroup({
+    maxClusterRadius: 31,
+    animate: false,
+    showCoverageOnHover: false,
+    spiderfyDistanceMultiplier: 1.35,
+    spiderLegPolylineOptions: {color: '#405b54', weight: 1.5, opacity: .75},
+    iconCreateFunction(cluster) {
+      return L.divIcon({
+        className: 'place-group',
+        html: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="12" height="12" rx="3"/>' +
+          '<path d="M9 4h7a4 4 0 0 1 4 4v7"/></svg><span class="sr-only">겹친 시설 ' + fmt(cluster.getChildCount()) +
+          '곳 펼치기</span>',
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
+      });
+    }
   }).addTo(m);
-  if (!g.records) {
-    L.marker([g.la, g.lo], {
-      alt: g.name + ' · 학원 ' + fmt(g.n) + '곳',
-      zIndexOffset: 300,
-      icon: L.divIcon({className: 'hub-pin', html: fmt(g.n), iconSize: [44, 44], iconAnchor: [22, 22]})
-    }).bindTooltip(E(g.name) + ' · 학원 ' + fmt(g.n) + '곳').addTo(m);
-  }
-  const apartments = L.layerGroup().addTo(m), schools = L.layerGroup().addTo(m);
-  routeLayers = L.layerGroup().addTo(m);
-  const rows = data.a.filter(row => row[2] <= distance);
-  const fit = core.getBounds(), markers = [];
-  rows.forEach((row, index) => {
-    const ll = latLng(row.slice(-2));
-    fit.extend(ll);
-    const marker = pointMarker(ll, row[0], 'apartment').on('click', () => selectApt(g, row, index, markers)).addTo(apartments);
-    markers.push(marker);
-  });
-  const schoolRows = data.s.filter(row => row[2] <= distance);
-  schoolRows.forEach((row, index) => {
-    const [lon, lat] = row.slice(-2), ll = [lat, lon];
-    const school = schoolsByPoint.get(campusKey(row[0], row[1], lon, lat));
-    fit.extend(ll);
-    schoolMarker(ll, row[0], school).addTo(schools);
-    const button = $('detail').querySelector('[data-school="' + index + '"]');
-    if (school) button.onclick = () => selectPlace('school', school);
-    else button.disabled = true;
-  });
-  const compactPins = () => $('street').classList.toggle('compact-pins', m.getZoom() < 15.75);
-  m.on('zoomend', compactPins);
-  const padding = {paddingTopLeft: [24, 70], paddingBottomRight: [24, 26], maxZoom: 17};
-  m.fitBounds(fit, padding);
-  compactPins();
-  let touched = false;
-  m.on('movestart', () => { touched = true; });
-  if (!g.records) {
-    const selectedDistance = distance;
-    fetch('ranges/' + g.id + '.json').then(response => {
+}
+
+function loadHubRanges(id) {
+  if (!hubRangeRequests.has(id)) {
+    const request = fetch('ranges/' + id + '.json').then(response => {
       if (!response.ok) throw new Error('Range unavailable');
       return response.json();
-    }).then(shape => {
-      if (street !== m) return;
-      const band = L.geoJSON(shape[selectedDistance], {
-        style: {color: '#337a9f', weight: 1.5, dashArray: '5 6', fillColor: '#75bbd6', fillOpacity: .13}, interactive: false
-      }).addTo(m).bringToBack();
-      if (!touched) m.fitBounds(band.getBounds(), padding);
-    }).catch(() => {});
+    }).then(shapes => {
+      if (!areaRanges.every(meters => ['Polygon', 'MultiPolygon'].includes(shapes?.[meters]?.type))) {
+        throw new Error('Invalid range geometry');
+      }
+      return shapes;
+    }).catch(error => {
+      hubRangeRequests.delete(id);
+      throw error;
+    });
+    hubRangeRequests.set(id, request);
   }
-  $('showA').onchange = event => event.target.checked ? apartments.addTo(m) : m.removeLayer(apartments);
-  $('showS').onchange = event => event.target.checked ? schools.addTo(m) : m.removeLayer(schools);
-  $('detail').querySelectorAll('[data-apt]').forEach((button, index) => {
-    button.onclick = () => selectApt(g, rows[index], index, markers);
-  });
+  return hubRangeRequests.get(id);
+}
+
+function mountMap(g, renderDetails) {
+  const data = g.records || D.maps[g.id];
+  const controls = '<span>' + (g.records ? '학교 반경' : '학원가 경계 기준') + '</span>' + areaRanges.map(meters =>
+    '<button type="button" data-range="' + meters + '">' + rangeLabel(meters) + '</button>').join('');
+  mapFrame(g.name + ' 주변 지도', controls,
+    '<span><i class="swatch hub-swatch"></i>학원가 경계</span><label><input id="showS" type="checkbox" checked>' +
+    '<i class="swatch school-swatch"></i>학교</label><label><input id="showA" type="checkbox" checked>' +
+    '<i class="swatch apartment-swatch"></i>아파트</label><span class="range-key"><i class="swatch band-swatch"></i>' +
+    '<span id="rangeKey"></span></span><small id="rangeStatus" role="status" hidden></small>');
+  const m = newStreetMap().setView([g.la, g.lo], 15);
+  const scope = L.layerGroup().addTo(m);
+  const core = g.records ? null : academyBoundary(g).addTo(m);
+  const points = placeMarkerGroup(m);
+  routeLayers = L.layerGroup().addTo(m);
+
+  let userMoved = false, fitting = false, ranges, apartmentMarkers = [], schoolMarkers = [];
+  m.on('movestart', () => { if (!fitting) userMoved = true; });
+
+  function drawScope() {
+    scope.clearLayers();
+    let bounds;
+    if (g.records) {
+      bounds = schoolRings(g, scope);
+    } else if (ranges) {
+      bounds = L.geoJSON(ranges[distance], {
+        pane: 'studyRange',
+        style: {color: '#286a9a', weight: 2, fillColor: '#68abd3', fillOpacity: .31, dashArray: '7 5', className: 'study-boundary'},
+        interactive: false
+      }).addTo(scope).getBounds();
+    } else {
+      bounds = core.getBounds();
+    }
+    if (!userMoved) {
+      fitting = true;
+      m.fitBounds(bounds, mapPadding);
+      fitting = false;
+    }
+  }
+
+  function updatePoiVisibility() {
+    points.clearLayers();
+    points.addLayers([
+      ...($('showA').checked ? apartmentMarkers : []),
+      ...($('showS').checked ? schoolMarkers : [])
+    ]);
+  }
+
+  updateMapRange = () => {
+    stopRoute();
+    m.closePopup();
+    routeLayers.clearLayers();
+    $('mapPanel').querySelectorAll('[data-range]').forEach(button => {
+      button.setAttribute('aria-pressed', String(Number(button.dataset.range) === distance));
+    });
+    $('rangeKey').textContent = (g.records ? '학교 반경 ' : '학군지 · ') + rangeLabel(distance) + ' 이내';
+    renderDetails();
+
+    const apartments = data.a.filter(row => row[2] <= distance);
+    const apartmentButtons = $('detail').querySelectorAll('[data-apt]');
+    apartmentMarkers = apartments.map((row, index) => {
+      const marker = pointMarker(latLng(row.slice(-2)), row[0], 'apartment');
+      marker.on('click', () => selectApt(g, row, index, marker));
+      apartmentButtons[index].onclick = () => selectApt(g, row, index, marker);
+      return marker;
+    });
+    const schools = data.s.filter(row => row[2] <= distance);
+    const schoolButtons = $('detail').querySelectorAll('[data-school]');
+    schoolMarkers = schools.map((row, index) => {
+      const [lon, lat] = row.slice(-2);
+      const school = schoolsByPoint.get(campusKey(row[0], row[1], lon, lat));
+      if (school) schoolButtons[index].onclick = () => selectPlace('school', school);
+      else schoolButtons[index].disabled = true;
+      return schoolMarker([lat, lon], row[0], school);
+    });
+    updatePoiVisibility();
+    drawScope();
+  };
+  $('showA').onchange = $('showS').onchange = updatePoiVisibility;
+  updateMapRange();
+
+  if (core) {
+    loadHubRanges(g.id).then(shapes => {
+      if (street !== m) return;
+      ranges = shapes;
+      drawScope();
+    }).catch(() => {
+      if (street !== m) return;
+      const status = $('rangeStatus');
+      status.hidden = false;
+      status.textContent = '학군지 경계를 불러오지 못했습니다.';
+    });
+  }
 }
 function inside(p,rings){
  const test=ring=>{let yes=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const a=ring[i],b=ring[j];if((a[1]>p[1])!==(b[1]>p[1])&&p[0]<(b[0]-a[0])*(p[1]-a[1])/(b[1]-a[1])+a[0])yes=!yes}return yes};
@@ -148,29 +247,34 @@ function firstEntry(path,poly){
   if(isFinite(best)){out.push([a[0]+best*dx,a[1]+best*dy]);return out}out.push(b);
  }return null;
 }
-async function selectApt(g,r,index,markers){
+async function selectApt(g,r,index,marker){
  const m=street, token=++serial;if(pending)pending.abort();
  const ctrl=pending=new AbortController(), start=r.slice(-2),ll=latLng(start),cacheKey=g.id+'/'+start.join(',');
- routeLayers.clearLayers();markers.forEach(marker=>marker.getElement()?.classList.remove('pin-selected'));document.querySelectorAll('[data-apt]').forEach((el,i)=>el.classList.toggle('selected',i===index));
- L.circleMarker(ll,{color:'#194651',weight:3,radius:10,fill:false,interactive:false}).addTo(routeLayers);if(markers[index]?.getElement()) markers[index].getElement().classList.add('pin-selected');
+ routeLayers.clearLayers();document.querySelectorAll('[data-apt]').forEach((el,i)=>el.classList.toggle('selected',i===index));
+ L.circleMarker(ll,{color:'#194651',weight:3,radius:11,fill:false,interactive:false}).addTo(routeLayers);
  const head='<strong>'+E(r[0])+'</strong>'+nearestDescription(r)+(r.length===6?'<small>'+E(r[3].date)+' 사용승인 · '+E(r[3].type)+' · K-apt</small>':''),card=$('routeCard');
- const marker=markers[index];
- const popup=marker && m.hasLayer(marker) ? L.popup({maxWidth:280,autoPan:false})
-   .setLatLng(ll).setContent(document.createElement('div')).openOn(m) : null;
+ const popup=L.popup({maxWidth:265,autoPan:true,autoPanPaddingTopLeft:[12,106],autoPanPaddingBottomRight:[12,18]})
+   .setLatLng(m.hasLayer(marker) ? marker.getLatLng() : ll);
+ let opened = false;
  function showRoute(html){
    card.innerHTML=html;
-   if (!popup) return;
    const box=document.createElement('div');
    box.className='route-popup';
    box.innerHTML=html;
    const retry=box.querySelector('.retry');
-   if(retry)retry.onclick=()=>selectApt(g,r,index,markers);
+   if(retry)retry.onclick=()=>selectApt(g,r,index,marker);
    popup.setContent(box);
+   if (!opened) {
+     opened = true;
+     popup.openOn(m);
+   }
  }
  const note=g.records?'단지와 학교 대표점 인근 보행로 사이의 경로입니다. 시간은 분당 75m로 추정합니다.':'단지 대표점 인근 보행로에서 대표 학원 방향으로 이동해 처음 경계에 닿는 경로 기준입니다. 시간은 분당 75m로 추정합니다.';
  if(r[2]===0){showRoute(head+(g.records?'학교 대표점까지 0m':'선택한 '+E(g.name)+' 내부 · 0m'));return;}
  showRoute(head+E(g.name)+'까지 보행 경로를 조회하고 있습니다…');
- let timer;
+ let timer, moved = false;
+ const markMoved = () => { moved = true; };
+ m.on('movestart', markMoved);
  try{
  let path=remembered.get(cacheKey);
  if(!path){
@@ -185,8 +289,10 @@ async function selectApt(g,r,index,markers){
  if(points.length>1){L.polyline(points,{color:'#fff',weight:8,interactive:false}).addTo(routeLayers);L.polyline(points,{color:'#00669c',weight:4,interactive:false}).addTo(routeLayers)}
  if(gap>2)L.polyline([ll,points[0]],{color:'#455868',weight:2,dashArray:'3 5',interactive:false}).addTo(routeLayers);
  L.circleMarker(points[points.length-1],{radius:5,color:'white',fillColor:'#754198',fillOpacity:1}).bindTooltip(g.records?'학교 인근 도착':'학원가 도착').addTo(routeLayers);
- m.fitBounds(L.latLngBounds([ll,...points]),{padding:[35,35],maxZoom:17});
+ if (!moved && !m.getBounds().contains(L.latLngBounds(points))) {
+   m.fitBounds(L.latLngBounds([ll,...points]), mapPadding);
+ }
  showRoute(head+'<b>도보 약 '+fmt(Math.round(length))+'m · '+Math.ceil(length/75)+'분</b>　<small>직선 '+fmt(r[2])+'m · '+E(g.name)+'</small><small>'+note+(gap>2?' 대표점에서 보행로까지 '+gap+'m는 도보 거리에서 제외했습니다.':'')+'</small>');
- }catch(err){if(token!==serial)return;showRoute(head+E(g.name)+'까지 도보 경로를 확인할 수 없습니다. <small>'+(g.records?'학교':'경계')+'까지 직선 '+fmt(r[2])+'m</small><button class="retry">다시 조회</button>');card.querySelector('button').onclick=()=>selectApt(g,r,index,markers)}
- finally{clearTimeout(timer)}
+ }catch(err){if(token!==serial)return;showRoute(head+E(g.name)+'까지 도보 경로를 확인할 수 없습니다. <small>'+(g.records?'학교':'경계')+'까지 직선 '+fmt(r[2])+'m</small><button class="retry">다시 조회</button>');card.querySelector('button').onclick=()=>selectApt(g,r,index,marker)}
+ finally{clearTimeout(timer);m.off('movestart',markMoved)}
 }

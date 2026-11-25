@@ -57,17 +57,18 @@ const hubBounds = D.hubs.map(g=>{
   for(const polygon of D.maps[g.id].b) for(const [lon,lat] of polygon[0]) bounds.extend([lat,lon]);
   return {type:'hub',lat:g.la,lon:g.lo,place:g,bounds};
 });
-function viewportItems(bounds){
-  const items=visibleLayers.hub?hubBounds.filter(h=>bounds.intersects(h.bounds)):[];
-  let low=0, high=pointsByLatitude.length;
-  while(low<high){
-    const mid=(low+high)>>>1;
-    if(pointsByLatitude[mid].lat<bounds.getSouth())low=mid+1;else high=mid;
+function viewportPlaces(bounds) {
+  const items = [];
+  let low = 0, high = pointsByLatitude.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (pointsByLatitude[mid].lat < bounds.getSouth()) low = mid + 1;
+    else high = mid;
   }
-  for(let i=low;i<pointsByLatitude.length;i++){
-    const point=pointsByLatitude[i];
-    if(point.lat>bounds.getNorth())break;
-    if(visibleLayers[point.type] && point.lon>=bounds.getWest() && point.lon<=bounds.getEast())items.push(point);
+  for (let i = low; i < pointsByLatitude.length; i++) {
+    const point = pointsByLatitude[i];
+    if (point.lat > bounds.getNorth()) break;
+    if (visibleLayers[point.type] && point.lon >= bounds.getWest() && point.lon <= bounds.getEast()) items.push(point);
   }
   return items;
 }
@@ -108,64 +109,81 @@ function showExplorer() {
 }
 
 function mountExplorerMap({apartment, view}) {
-  const swatches = {hub: 'hub', school: 'school', apartment: 'apartment'};
   mapFrame('전국 자유 탐색 지도', '', Object.keys(titles).map(type =>
     '<label><input type="checkbox" data-layer="' + type + '" ' + (visibleLayers[type] ? 'checked' : '') +
-    '><i class="swatch ' + swatches[type] + '-swatch"></i>' + titles[type] + '</label>').join(''));
-  const m = street = L.map('street', {zoomSnap: .25, minZoom: 5, maxZoom: 19, scrollWheelZoom: false, zoomControl: false, zoomAnimation: false});
-  L.control.zoom({position: 'bottomright'}).addTo(m);
-  addStreetTiles(m);
+    '><i class="swatch ' + type + '-swatch"></i>' + titles[type] + (type === 'hub' ? ' 경계' : '') + '</label>').join('') +
+    '<small id="exploreZoomHint" hidden>확대하면 학교와 아파트가 표시됩니다.</small>');
+  const m = newStreetMap();
   if (apartment) m.setView(latLng(apartment.slice(-2)), 16.5);
   else if (view) m.setView(view.center, view.zoom);
   else m.fitBounds([[33.1, 125.5], [38.6, 129.65]], {padding: [8, 8], maxZoom: 8});
+
+  const outlines = L.layerGroup(hubBounds.map(({place}) => academyBoundary(place, () => openExplorerHub(place))));
+  const markers = placeMarkerGroup(m);
+  const plotted = new Map();
+  let selectedApartment;
   if (apartment) {
-    pointMarker(latLng(apartment.slice(-2)), apartment[0], 'apartment', true)
-      .bindPopup(() => apartmentPopup(apartment), {autoPan: false}).addTo(m).openPopup();
+    selectedApartment = pointMarker(latLng(apartment.slice(-2)), apartment[0], 'apartment', true)
+      .bindPopup(() => apartmentPopup(apartment), {autoPan: false});
+    if (visibleLayers.apartment) selectedApartment.addTo(m).openPopup();
   }
-  const layer=L.layerGroup().addTo(m);
-  function drawPoint(item){
-    const {type,place,lat,lon}=item,ll=[lat,lon];
-    if(type==='hub'){
-      L.geoJSON({type:'MultiPolygon',coordinates:D.maps[place.id].b},{style:{color:'#00785f',weight:2,fillOpacity:.18}}).bindTooltip(E(place.name)).on('click',()=>openExplorerHub(place)).addTo(layer);
-    }else if(type==='school'){
-      schoolMarker(ll,place.name,place).addTo(layer);
-    }else{
-      if (place !== apartment) pointMarker(ll, place[0], 'apartment').bindPopup(() => apartmentPopup(place), {autoPan: false}).addTo(layer);
+
+  function drawPoint({type, place, lat, lon}) {
+    const ll = [lat, lon];
+    return type === 'school' ? schoolMarker(ll, place.name, place) :
+      pointMarker(ll, place[0], 'apartment').bindPopup(() => apartmentPopup(place), {autoPan: false});
+  }
+
+  function update() {
+    if (visibleLayers.hub && !m.hasLayer(outlines)) outlines.addTo(m);
+    if (!visibleLayers.hub && m.hasLayer(outlines)) outlines.remove();
+    if (selectedApartment) {
+      if (visibleLayers.apartment && !m.hasLayer(selectedApartment)) selectedApartment.addTo(m);
+      if (!visibleLayers.apartment && m.hasLayer(selectedApartment)) selectedApartment.remove();
     }
-  }
-  function drawGroups(items,academiesOnly){
-    const cells=new Map(),zoom=Math.floor(m.getZoom());
-    for(const item of items){
-      const pos=m.project([item.lat,item.lon],zoom);
-      const key=Math.floor(pos.x/58)+','+Math.floor(pos.y/58);
-      if(!cells.has(key))cells.set(key,{lat:0,lon:0,n:0});
-      const cell=cells.get(key);cell.lat+=item.lat;cell.lon+=item.lon;cell.n++;cell.academies=(cell.academies||0)+(item.type==='hub'?item.place.n:0);
+
+    const showPlaces = m.getZoom() >= 13;
+    const bounds = m.getBounds();
+    const next = new Set(showPlaces ? viewportPlaces(bounds.pad(.25)).filter(item => item.place !== apartment) : []);
+    const removed = [], added = [];
+    for (const [item, marker] of plotted) {
+      if (!next.has(item)) {
+        plotted.delete(item);
+        removed.push(marker);
+      }
     }
-    for(const c of cells.values()){
-      const ll=[c.lat/c.n,c.lon/c.n],label=fmt(academiesOnly?c.academies:c.n),title=(academiesOnly?'밀집 학원가 내 학원 ':'시설 ')+label+'곳 · 확대';
-      L.marker(ll,{title,icon:L.divIcon({className:'explore-cluster',html:label,iconSize:[46,30],iconAnchor:[23,15]})}).on('click',()=>m.setView(ll,Math.min(15,zoom+2))).addTo(layer);
+    for (const item of next) {
+      if (!plotted.has(item)) {
+        const marker = drawPoint(item);
+        plotted.set(item, marker);
+        added.push(marker);
+      }
     }
+    if (removed.length) markers.removeLayers(removed);
+    if (added.length) markers.addLayers(added);
+
+    $('exploreZoomHint').hidden = showPlaces || (!visibleLayers.school && !visibleLayers.apartment);
+    const status = $('exploreStatus');
+    if (!status) return;
+    const counts = {
+      hub: visibleLayers.hub ? hubBounds.filter(hub => bounds.intersects(hub.bounds)).length : 0,
+      school: 0, apartment: 0
+    };
+    for (const point of next) {
+      if (bounds.contains([point.lat, point.lon])) counts[point.type]++;
+    }
+    if (apartment && visibleLayers.apartment && bounds.contains([apartment.at(-1), apartment.at(-2)])) counts.apartment++;
+    const visible = Object.keys(counts).filter(type => visibleLayers[type] && (type === 'hub' || showPlaces));
+    status.textContent = visible.map(type => titles[type] + ' ' + fmt(counts[type]) + '곳').join(' · ') ||
+      (Object.values(visibleLayers).some(Boolean) ? '지도를 확대해 주변 시설을 살펴보세요.' : '표시할 항목을 선택하세요.');
   }
-  function update(){
-    layer.clearLayers();
-    const items=viewportItems(m.getBounds()), counts={hub:0,school:0,apartment:0};
-    for(const item of items)counts[item.type]++;
-    const grouped=m.getZoom()<14;
-    $('street').classList.toggle('compact-pins', m.getZoom() < 15.75);
-    if(grouped)drawGroups(visibleLayers.hub?items.filter(item=>item.type==='hub'):items,visibleLayers.hub);else items.forEach(drawPoint);
-    if ($('exploreStatus')) $('exploreStatus').textContent=Object.keys(counts).filter(t=>visibleLayers[t]).map(t=>titles[t]+' '+fmt(counts[t])+'곳').join(' · ')+(items.length&&grouped?(visibleLayers.hub?'　숫자는 밀집 학원가에 속한 학원 수입니다.':'　숫자를 누르면 확대됩니다.'):'') || '표시할 항목을 선택하세요.';
-  }
-  let redrawTimer;
-  function finishMove(){
-    clearTimeout(redrawTimer);
-    redrawTimer=null;
-    update();
-  }
-  m.on('drag',()=>{
-    if(!redrawTimer)redrawTimer=setTimeout(()=>{redrawTimer=null;if(street===m)update();},180);
+
+  m.on('moveend', update);
+  document.querySelectorAll('[data-layer]').forEach(input => {
+    input.onchange = () => {
+      visibleLayers[input.dataset.layer] = input.checked;
+      update();
+    };
   });
-  m.on('moveend',finishMove);
-  m.on('unload',()=>clearTimeout(redrawTimer));
-  document.querySelectorAll('[data-layer]').forEach(el=>el.onchange=()=>{visibleLayers[el.dataset.layer]=el.checked;update();});
   update();
 }

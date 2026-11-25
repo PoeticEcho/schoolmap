@@ -21,26 +21,36 @@ function buildSchool(school) {
   return {...school,records:{a,s:nearby(otherSchools)}};
 }
 function showSchool() {
-  const school=activeSchool;
-  const distribution=schoolDistribution(school);
-  const hubs=school.hubs.filter(([,meters])=>meters<=distance);
-  $('detail').innerHTML='<div class="panelhead"><div class="eyebrow">'+E(school.level)+' 중심 지도</div><h2>'+E(school.name)+'</h2><div class="dim">'+E(school.address)+'</div></div>'+distribution.html+nearbyPanel(school)+
-    '<details><summary>반경 내 학원가 '+hubs.length+'곳</summary>'+hubs.map(([id,m])=>'<div>'+E(H.get(id).name)+' · 반경 내 학원 '+fmt(distribution.perHub.get(id)||0)+'곳 · 경계까지 '+fmt(m)+'m</div>').join('')+'</details>';
-  mountMap(school);
-}
-function schoolRings(m,school) {
-  const center=[school.la,school.lo];
-  m.setView(center, 15);
-  let outer;
-  for(const meters of [1000,500,300].filter(radius=>radius<=distance)){
-    const ring=L.circle(center,{radius:meters,color:'#327ab1',weight:meters===distance?2:1,dashArray:'6 4',fillColor:'#3496dd',fillOpacity:meters===distance?.075:.035,interactive:false}).addTo(m);
-    if(!outer)outer=ring;
-    const top=ring.getBounds().getNorth();
-    L.marker([top,school.lo],{icon:L.divIcon({className:'ring-label',html:meters===1000?'1km':meters+'m',iconSize:[40,17],iconAnchor:[20,9]}),interactive:false,keyboard:false}).addTo(m);
-  }
-  school.hubs.filter(([,meters])=>meters<=distance).forEach(([id])=>{
-    L.geoJSON({type:'MultiPolygon',coordinates:D.maps[id].b},{style:{color:'#00785f',weight:2,fillOpacity:.30}}).bindTooltip(E(H.get(id).name)+' · 전체 학원 '+fmt(H.get(id).n)+'곳').on('click',()=>openExplorerHub(H.get(id))).addTo(m);
+  const school = activeSchool;
+  mountMap(school, () => {
+    const distribution = schoolDistribution(school);
+    const hubs = school.hubs.filter(([, meters]) => meters <= distance);
+    $('detail').innerHTML = '<div class="panelhead"><div class="eyebrow">' + E(school.level) + ' 중심 지도</div><h2>' +
+      E(school.name) + '</h2><div class="dim">' + E(school.address) + '</div></div>' + distribution.html + nearbyPanel(school) +
+      '<details><summary>반경 내 학원가 ' + hubs.length + '곳</summary>' + hubs.map(([id, meters]) => '<div>' +
+      E(H.get(id).name) + ' · 반경 내 학원 ' + fmt(distribution.perHub.get(id) || 0) +
+      '곳 · 경계까지 ' + fmt(meters) + 'm</div>').join('') + '</details>';
   });
-  pointMarker(center,school.name,'school',true).addTo(m);
-  return outer;
+}
+
+function schoolRings(school, layers) {
+  const center = [school.la, school.lo];
+  let bounds;
+  for (const meters of [1000, 500, 300].filter(radius => radius <= distance)) {
+    const ring = L.circle(center, {
+      pane: 'studyRange', radius: meters, color: '#2e6795', weight: meters === distance ? 2 : 1,
+      dashArray: '6 5', fillOpacity: meters === distance ? .16 : .04, interactive: false
+    }).addTo(layers);
+    const edge = ring.getBounds();
+    bounds ??= edge;
+    L.marker([edge.getNorth(), school.lo], {
+      icon: L.divIcon({className: 'ring-label', html: rangeLabel(meters), iconSize: [40, 17], iconAnchor: [20, 9]}),
+      interactive: false, keyboard: false
+    }).addTo(layers);
+  }
+  for (const [id, meters] of school.hubs) {
+    if (meters <= distance) academyBoundary(H.get(id), () => openExplorerHub(H.get(id))).addTo(layers);
+  }
+  pointMarker(center, school.name, 'school', true).addTo(layers);
+  return bounds;
 }
