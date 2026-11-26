@@ -235,6 +235,17 @@ button svg, .searchfield > svg, .place-icon svg, .place-pin svg {
 .near button small { color: var(--muted); }
 .near button span > small { display: block; }
 .near button:hover, .near button.selected { background: var(--mint); }
+.school-profile { border: 1px solid var(--line); border-radius: 12px; padding: 11px; margin: 9px 0 12px; }
+.school-profile-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.school-profile-head h3 { font-size: 16px; scroll-margin-top: 12px; }
+.school-profile-head a { font-size: 12px; font-weight: 750; }
+.school-profile-meta { margin-bottom: 8px; }
+.school-profile .stats { margin-bottom: 0; }
+.school-profile .stats div { padding: 7px 9px; }
+.school-profile .stats dd { font-size: 20px; }
+.school-profile-trend { display: flex; align-items: baseline; flex-wrap: wrap; gap: 3px 8px; margin-top: 8px; color: var(--muted); font-size: 12px; }
+.school-profile-trend strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+.school-profile table th[scope="row"] { position: static; }
 .school-distribution { padding: 9px 12px; margin: 7px 0; border-radius: 9px; background: #eef6ef; color: var(--green-dark); font-size: 13px; }
 .school-distribution ul { list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 4px 12px; padding: 0; margin: 5px 0 0; }
 .school-distribution li { display: flex; gap: 5px; align-items: center; font-size: 12px; }

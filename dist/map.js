@@ -78,7 +78,7 @@ function pointMarker(ll, name, type, center = false) {
 
 function schoolMarker(ll, name, school) {
   const marker = pointMarker(ll, name, 'school');
-  if (school) marker.on('click', () => selectPlace('school', school));
+  if (school) marker.on('click', () => viewSchoolProfile(school));
   return marker;
 }
 
@@ -208,7 +208,7 @@ function mountMap(g, renderDetails) {
     schoolMarkers = schools.map((row, index) => {
       const [lon, lat] = row.slice(-2);
       const school = schoolsByPoint.get(campusKey(row[0], row[1], lon, lat));
-      if (school) schoolButtons[index].onclick = () => selectPlace('school', school);
+      if (school) schoolButtons[index].onclick = () => viewSchoolProfile(school);
       else schoolButtons[index].disabled = true;
       return schoolMarker([lat, lon], row[0], school);
     });
@@ -270,7 +270,6 @@ async function selectApt(g,r,index,marker){
      popup.openOn(m);
    }
  }
- const note=g.records?'단지와 학교 대표점 인근 보행로 사이의 경로입니다. 시간은 분당 75m로 추정합니다.':'단지 대표점 인근 보행로에서 대표 학원 방향으로 이동해 처음 경계에 닿는 경로 기준입니다. 시간은 분당 75m로 추정합니다.';
  if(r[2]===0){showRoute(head+(g.records?'학교 대표점까지 0m':'선택한 '+E(g.name)+' 내부 · 0m'));return;}
  showRoute(head+E(g.name)+'까지 보행 경로를 조회하고 있습니다…');
  let timer, moved = false;
@@ -293,7 +292,7 @@ async function selectApt(g,r,index,marker){
  if (!moved && !m.getBounds().contains(L.latLngBounds(points))) {
    m.fitBounds(L.latLngBounds([ll,...points]), mapPadding);
  }
- showRoute(head+'<b>도보 약 '+fmt(Math.round(length))+'m · '+Math.ceil(length/75)+'분</b>　<small>직선 '+fmt(r[2])+'m · '+E(g.name)+'</small><small>'+note+(gap>2?' 대표점에서 보행로까지 '+gap+'m는 도보 거리에서 제외했습니다.':'')+'</small>');
+ showRoute(head+'<b>도보 약 '+fmt(Math.round(length))+'m · '+Math.ceil(length/75)+'분</b>　<small>직선 '+fmt(r[2])+'m · '+E(g.name)+'</small>');
  }catch(err){if(token!==serial)return;showRoute(head+E(g.name)+'까지 도보 경로를 확인할 수 없습니다. <small>'+(g.records?'학교':'경계')+'까지 직선 '+fmt(r[2])+'m</small><button class="retry">다시 조회</button>');card.querySelector('button').onclick=()=>selectApt(g,r,index,marker)}
  finally{clearTimeout(timer);m.off('movestart',markMoved)}
 }
