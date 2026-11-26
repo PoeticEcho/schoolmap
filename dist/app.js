@@ -44,11 +44,11 @@ function renderRanking() {
   $('scope').textContent = [province || '전국', city && city !== province ? city : ''].filter(Boolean).join(' · ');
   $('heading').textContent = history ? '2022 상위 지역의 현재 순위' : isHub ? '학원가 순위' : '동네 순위';
   $('meta').textContent = fmt(results.length) + (isHub ? '개 학원가' : '개 동네');
-  const headers = history ? ['2022', '동네', '당시 수', '현재 수', '전국', '도시'] : ['전국', isHub ? '학원가' : '동네', '도시', '학원', '교습소'];
+  const headers = history ? ['2022', '동네', '당시 수', '현재 수', '전국'] : ['전국', isHub ? '학원가' : '동네', '학원', '교습소'];
   $('head').innerHTML = '<tr>' + headers.map(label => '<th scope="col">' + label + '</th>').join('') + '</tr>';
   $('rows').innerHTML = results.slice(0, shown).map((row, index) => {
     const selected = !exploring && !activeSchool && row.id === key;
-    const stats = history ? [fmt(row.oldn), fmt(row.n), row.nat, row.city] : [row.city, fmt(row.n), fmt(row.t)];
+    const stats = history ? [fmt(row.oldn), fmt(row.n), row.nat] : [fmt(row.n), fmt(row.t)];
     return '<tr' + (selected ? ' class="sel"' : '') + '><td><span class="rank-number">' +
       (history ? row.old : row.nat) + '</span></td><td><button type="button" data-i="' + index + '"' +
       (selected ? ' aria-current="true"' : '') + '>' + E(isHub ? row.name : row.d) +
