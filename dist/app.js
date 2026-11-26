@@ -65,6 +65,7 @@ function render() {
 }
 
 function detail() {
+  $('detail').scrollTop = 0;
   if (exploring) {
     showExplorer();
     return;
@@ -115,6 +116,7 @@ $('rankModes').addEventListener('click', event => {
   mode = button.dataset.mode;
   if (isCompact()) setRanking(true);
   render();
+  $('rankList').scrollTop = 0;
 });
 
 $('rows').addEventListener('click', event => {
@@ -145,6 +147,7 @@ $('city').onchange = $('refFilter').onchange = applyRankingFilters;
 function applyRankingFilters() {
   leavePlace();
   render();
+  $('rankList').scrollTop = 0;
 }
 
 const stats = D.stats;

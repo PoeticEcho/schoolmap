@@ -261,6 +261,7 @@ button svg, .searchfield > svg, .place-icon svg, .place-pin svg {
 .filters { margin: 8px 0; }
 .filters select { width: 100%; padding: 5px; min-height: 34px; background: white; border: 1px solid var(--line); border-radius: 7px; font-size: 12px; text-overflow: ellipsis; }
 .rank-scroll { max-height: 300px; overflow: auto; scrollbar-width: thin; }
+.rank-scroll:focus-visible, #detail:focus-visible { outline-offset: -2px; }
 table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; text-align: right; font-size: 12px; }
 th, td { border-bottom: 1px solid var(--line); padding: 6px 4px; }
 th { position: sticky; top: 0; background: #f5f8f4; color: var(--muted); white-space: nowrap; }
@@ -283,6 +284,58 @@ tr.sel { background: var(--mint); }
   .map-toolbar { left: 7px; max-width: calc(100% - 14px); }
   .map-toolbar > button svg { display: none; }
   .map-toolbar button { padding-inline: 6px; }
+}
+@media (width > 900px) {
+  body {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+  }
+  .site-header-inner { max-width: none; padding: 12px clamp(16px, 2vw, 32px); }
+  .layout {
+    width: 100%;
+    max-width: none;
+    min-height: 0;
+    margin: 0;
+    padding: 14px clamp(16px, 2vw, 32px) 8px;
+    grid-template-columns: minmax(0, 1fr) clamp(330px, 25vw, 460px);
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 8px 16px;
+    align-items: stretch;
+  }
+  .atlas { position: relative; top: auto; min-height: 0; }
+  #mapPanel { display: grid; grid-template-rows: minmax(0, 1fr) auto; height: 100%; }
+  .map-canvas { min-height: 0; }
+  #street { height: 100%; }
+  .sidebar { min-height: 0; grid-template-rows: fit-content(50%) minmax(0, 1fr); gap: 12px; }
+  #detail, #ranking, .method-copy {
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+  #ranking { display: flex; flex-direction: column; }
+  #ranking > :not(.rank-scroll) { flex: none; }
+  .ranking-header { margin-bottom: 8px; }
+  #ranking .filters { margin-block: 6px; }
+  #ranking th, #ranking td { padding-block: 3px; }
+  #ranking .more { min-height: 32px; }
+  .rank-scroll { flex: 1 0 0; min-height: min(82px, 12dvh); max-height: none; }
+  .method { position: relative; z-index: 700; }
+  .method summary { width: fit-content; padding: 4px 0; }
+  .method-copy {
+    position: absolute;
+    inset: auto auto calc(100% + 6px) 0;
+    width: min(720px, 100%);
+    max-height: min(53dvh, 440px);
+    padding: 12px 16px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--paper);
+    box-shadow: var(--shadow);
+  }
 }
 @media (max-width: 900px) {
   .site-header-inner { grid-template-columns: 1fr auto; padding: 10px 14px 12px; gap: 9px; }

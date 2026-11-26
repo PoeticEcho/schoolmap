@@ -84,7 +84,7 @@ function schoolMarker(ll, name, school) {
 
 function newStreetMap() {
   const m = street = L.map('street', {
-    scrollWheelZoom: false, zoomSnap: .25, minZoom: 5, maxZoom: 19, zoomControl: false, zoomAnimation: false
+    scrollWheelZoom: true, zoomSnap: .25, minZoom: 5, maxZoom: 19, zoomControl: false, zoomAnimation: false
   });
   const rangePane = m.createPane('studyRange');
   rangePane.style.zIndex = 390;
@@ -92,6 +92,11 @@ function newStreetMap() {
   m.createPane('academyArea').style.zIndex = 420;
   L.control.zoom({position: 'bottomright'}).addTo(m);
   addStreetTiles(m);
+  if (typeof ResizeObserver === 'function') {
+    const resize = new ResizeObserver(() => m.invalidateSize({debounceMoveend: true}));
+    resize.observe(m.getContainer());
+    m.once('unload', () => resize.disconnect());
+  }
   return m;
 }
 
