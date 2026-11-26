@@ -100,6 +100,9 @@ button svg, .searchfield > svg, .place-icon svg, .place-pin svg, .place-group sv
 .search-types { display: flex; gap: 5px; flex-wrap: wrap; padding: 10px; border-bottom: 1px solid var(--line); }
 .search-types button { border-radius: 999px; padding: 7px 11px; background: #eef3ee; color: var(--muted); font-size: 13px; font-weight: 700; }
 .search-types button[aria-pressed="true"] { background: var(--mint); color: var(--green-dark); }
+.search-recent { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.search-recent button { min-height: 28px; padding: 3px 6px; background: transparent; border-radius: 6px; color: var(--muted); }
+.search-recent button:hover { background: var(--mint); }
 #placeResults { max-height: min(47dvh, 370px); overflow: auto; overscroll-behavior: contain; }
 #placeResults [role="option"] { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 56px; padding: 8px 12px; cursor: pointer; }
 #placeResults [role="option"] + [role="option"] { border-top: 1px solid #edf1ed; }
@@ -196,7 +199,7 @@ button svg, .searchfield > svg, .place-icon svg, .place-pin svg, .place-group sv
 .pin-center.pin-school { background: var(--school); color: white; }
 .pin-center svg { width: 23px; height: 23px; }
 .place-pin:hover, .place-pin:focus-visible, .place-group:hover, .place-group:focus-visible { outline: 2px solid #102f40; }
-.place-group { background: #e9f1f4; color: #305a70; }
+.place-group:not(.place-pin) { background: #e9f1f4; color: #305a70; }
 .leaflet-interactive.academy-boundary:hover { fill-opacity: .48; }
 .ring-label { background: #fffffff2; border-radius: 7px; color: #195885; text-align: center; font: 700 11px/17px sans-serif; }
 

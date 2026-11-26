@@ -55,18 +55,24 @@ function addStreetTiles(m) {
   });
 }
 
-function pointMarker(ll, name, type, center = false) {
+function pointIcon(type, center = false, label = '') {
   const size = center ? 40 : 30;
+  return L.divIcon({
+    className: 'place-pin pin-' + type + (center ? ' pin-center' : '') + (label ? ' place-group' : ''),
+    html: (type === 'school' ? schoolIcon : apartmentIcon) +
+      (label ? '<span class="sr-only">' + E(label) + '</span>' : ''),
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2]
+  });
+}
+
+function pointMarker(ll, name, type, center = false) {
   return L.marker(ll, {
     title: name,
     alt: name,
+    placeType: type,
     zIndexOffset: center ? 500 : type === 'school' ? 100 : 0,
-    icon: L.divIcon({
-      className: 'place-pin pin-' + type + (center ? ' pin-center' : ''),
-      html: type === 'school' ? schoolIcon : apartmentIcon,
-      iconSize: [size, size],
-      iconAnchor: [size / 2, size / 2]
-    })
+    icon: pointIcon(type, center)
   }).bindTooltip(E(name));
 }
 
@@ -108,10 +114,14 @@ function placeMarkerGroup(m) {
     spiderfyDistanceMultiplier: 1.35,
     spiderLegPolylineOptions: {color: '#405b54', weight: 1.5, opacity: .75},
     iconCreateFunction(cluster) {
+      const count = fmt(cluster.getChildCount());
+      if (cluster.getAllChildMarkers().every(marker => marker.options.placeType === 'apartment')) {
+        return pointIcon('apartment', false, '아파트 ' + count + '개 단지 펼치기');
+      }
       return L.divIcon({
         className: 'place-group',
         html: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="12" height="12" rx="3"/>' +
-          '<path d="M9 4h7a4 4 0 0 1 4 4v7"/></svg><span class="sr-only">겹친 시설 ' + fmt(cluster.getChildCount()) +
+          '<path d="M9 4h7a4 4 0 0 1 4 4v7"/></svg><span class="sr-only">겹친 시설 ' + count +
           '곳 펼치기</span>',
         iconSize: [32, 32],
         iconAnchor: [16, 16]

@@ -38,13 +38,76 @@ const searchSources = {
   }}
 };
 const searchTypes = Object.keys(searchSources);
+const searchStorageKey = 'schoolmap.search.v1';
+const searchRevision = [document.lastModified, ...searchTypes.map(type => searchSources[type].rows.length)].join('|');
+const queryCache = new Map();
+const savedQueryLimit = 24, recentLimit = 6;
+let savedSearches = readSavedSearches() ?? {recent: [], queries: new Map()};
+
+function readSavedSearches() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(searchStorageKey));
+    if (!saved || typeof saved !== 'object') return null;
+    const recent = Array.isArray(saved?.recent) ? saved.recent.slice(0, recentLimit) : [];
+    const queries = saved?.revision === searchRevision && Array.isArray(saved.queries) ? saved.queries
+      .filter(pair => Array.isArray(pair) && typeof pair[0] === 'string' && Array.isArray(pair[1]))
+      .slice(-savedQueryLimit) : [];
+    return {recent, queries: new Map(queries)};
+  } catch {
+    return null;
+  }
+}
+
+function storeSearches() {
+  try {
+    localStorage.setItem(searchStorageKey, JSON.stringify({
+      revision: searchRevision, recent: savedSearches.recent, queries: [...savedSearches.queries]
+    }));
+  } catch {
+    // Storage can be disabled or full. Search and recents still work within this page.
+  }
+}
+
+function cacheSearchValue(cache, key, value, limit) {
+  cache.delete(key);
+  cache.set(key, value);
+  if (cache.size > limit) cache.delete(cache.keys().next().value);
+}
+
+function entryAt(type, index) {
+  const cached = searchIndex[type]?.[index];
+  if (cached) return cached;
+  const {build, rows} = searchSources[type];
+  const entry = build(rows[index]);
+  entry.index = index;
+  return entry;
+}
 
 function indexPlaces(type, count) {
-  const {rows, build} = searchSources[type];
   const entries = searchIndex[type] ??= [];
-  const end = Math.min(rows.length, entries.length + count);
-  for (let i = entries.length; i < end; i++) entries.push(build(rows[i]));
+  const end = Math.min(searchSources[type].rows.length, entries.length + count);
+  for (let i = entries.length; i < end; i++) entries.push(entryAt(type, i));
   return entries;
+}
+
+function searchPlaceId(place) {
+  return place.id ?? JSON.stringify([place[0], place.at(-2), place.at(-1)]);
+}
+
+function placeReference(entry) {
+  return [entry.type, entry.index, searchPlaceId(entry.place)];
+}
+
+function restorePlace(ref, allowMoved = false) {
+  if (!Array.isArray(ref)) return null;
+  const [type, storedIndex, id] = ref;
+  if (!Object.hasOwn(searchSources, type) || !Number.isInteger(storedIndex) || typeof id !== 'string') return null;
+  const rows = searchSources[type].rows;
+  const stored = rows[storedIndex];
+  if (stored && searchPlaceId(stored) === id) return entryAt(type, storedIndex);
+  if (!allowMoved) return null;
+  const index = rows.findIndex(place => searchPlaceId(place) === id);
+  return index === -1 ? null : entryAt(type, index);
 }
 
 function getSearchIndex(type) {
@@ -92,21 +155,51 @@ function addTopMatch(bucket, match, limit) {
   if (bucket.length > limit) bucket.pop();
 }
 
-function findPlaces(raw) {
+function searchRequest(raw) {
   raw = raw.trim();
   const query = normalize(raw);
-  if (!query) {
+  if (!query) return null;
+  const rank = raw.match(/^(?:rank\s*=\s*)?(\d+)\s*위$/i) || raw.match(/^rank\s*=\s*(\d+)$/i);
+  if (rank && (searchType === 'hub' || searchType === 'all')) {
+    const number = Number(rank[1]);
+    return {rank: number, cacheKey: JSON.stringify(['rank', rank[1]])};
+  }
+  const tokens = raw.split(/\s+/).map(normalize).filter(Boolean);
+  const selected = activeSchool || H.get(key) || townIndex.get(key);
+  const nearby = selected ? normalize((activeSchool ? activeSchool.address : selected.town || selected.id).split(' ')[1] || '') : '';
+  return {
+    query, tokens, nearby,
+    cacheKey: JSON.stringify([searchType, nearby, query, tokens]),
+    singleKey: JSON.stringify([searchType, query, tokens])
+  };
+}
+
+function findPlaces(raw) {
+  const request = searchRequest(raw);
+  if (!request) {
     previousMatch = null;
     return [];
   }
-  const tokens = raw.split(/\s+/).map(normalize).filter(Boolean);
-  const initialQuery = /^[ㄱ-ㅎ]{2,}$/.test(query);
-  const rank = raw.match(/^(?:rank\s*=\s*)?(\d+)\s*위$/i) || raw.match(/^rank\s*=\s*(\d+)$/i);
-  if (rank && (searchType === 'hub' || searchType === 'all')) {
-    return getSearchIndex('hub').filter(entry => entry.place.nat === Number(rank[1])).slice(0, 12);
+  const {cacheKey, singleKey} = request;
+  let results = queryCache.get(cacheKey) ?? queryCache.get(singleKey);
+  if (!results) {
+    const refs = savedSearches.queries.get(cacheKey) ?? savedSearches.queries.get(singleKey);
+    if (refs?.length && refs.length <= 12) {
+      const restored = refs.map(ref => restorePlace(ref));
+      if (restored.every(Boolean)) results = restored;
+    }
+    results ??= searchPlaces(request);
   }
-  const selected = activeSchool || H.get(key) || townIndex.get(key);
-  const nearby = selected ? normalize((activeSchool ? activeSchool.address : selected.town || selected.id).split(' ')[1] || '') : '';
+  // A single hit is independent of which region the map currently shows.
+  cacheSearchValue(queryCache, results.length === 1 ? singleKey ?? cacheKey : cacheKey, results, 48);
+  return results;
+}
+
+function searchPlaces({rank, query, tokens, nearby}) {
+  if (rank !== undefined) {
+    return getSearchIndex('hub').filter(entry => entry.place.nat === rank).slice(0, 12);
+  }
+  const initialQuery = /^[ㄱ-ㅎ]{2,}$/.test(query);
   const single = tokens.length === 1;
   // Extending one token can only match entries that already matched its shorter prefix.
   const candidates = single && previousMatch?.type === searchType && previousMatch.initialQuery === initialQuery &&
@@ -129,6 +222,31 @@ function findPlaces(raw) {
   }
   previousMatch = single ? {type: searchType, initialQuery, query, entries: matched} : null;
   return Object.values(buckets).flat().sort(orderMatches).slice(0, 12).map(match => match.entry);
+}
+
+function recentPlaces() {
+  return savedSearches.recent
+    .filter(ref => searchType === 'all' || ref?.[0] === searchType)
+    .map(ref => restorePlace(ref, true)).filter(Boolean);
+}
+
+function chooseSearchResult(match) {
+  const stored = readSavedSearches() ?? savedSearches;
+  const recent = new Map();
+  for (const ref of [placeReference(match), ...stored.recent]) {
+    if (!Array.isArray(ref)) continue;
+    const id = JSON.stringify([ref[0], ref[2]]);
+    if (!recent.has(id)) recent.set(id, ref);
+    if (recent.size === recentLimit) break;
+  }
+  savedSearches = {recent: [...recent.values()], queries: stored.queries};
+  const request = searchRequest(renderedQuery || '');
+  if (request) {
+    const cacheKey = choices.length === 1 ? request.singleKey ?? request.cacheKey : request.cacheKey;
+    cacheSearchValue(savedSearches.queries, cacheKey, choices.map(placeReference), savedQueryLimit);
+  }
+  storeSearches();
+  selectPlace(match.type, match.place);
 }
 
 function cancelSearchFrame() {
@@ -159,7 +277,10 @@ function showPlaces() {
   if (!searchPopover.hidden && raw === renderedQuery && searchType === renderedType) return;
   renderedQuery = raw;
   renderedType = searchType;
-  choices = findPlaces(raw);
+  choices = raw ? findPlaces(raw) : recentPlaces();
+  const recent = !raw && choices.length > 0;
+  $('recentSearchHeader').hidden = !recent;
+  suggestions.setAttribute('aria-label', recent ? '최근 검색' : '검색 결과');
   const icons = {town: locationIcon, hub: locationIcon, school: schoolIcon, apartment: apartmentIcon};
   suggestions.innerHTML = choices.map((entry, index) => {
     const area = entry.type === 'apartment' ? '인근 학원가 · ' + entry.area : entry.area;
@@ -221,8 +342,8 @@ searchBox.addEventListener('keydown', event => {
 $('placeSearch').addEventListener('submit', event => {
   event.preventDefault();
   showPlaces();
-  const match = choices[Math.max(0, highlighted)];
-  if (match) selectPlace(match.type, match.place);
+  const match = choices[highlighted >= 0 ? highlighted : searchBox.value.trim() ? 0 : -1];
+  if (match) chooseSearchResult(match);
   else searchBox.focus();
 });
 $('searchTypes').addEventListener('click', event => {
@@ -238,7 +359,16 @@ suggestions.addEventListener('click', event => {
   const item = event.target.closest('[data-choice]');
   if (!item) return;
   const match = choices[Number(item.dataset.choice)];
-  if (match) selectPlace(match.type, match.place);
+  if (match) chooseSearchResult(match);
+});
+$('clearRecentSearch').addEventListener('click', () => {
+  savedSearches = {recent: [], queries: new Map()};
+  queryCache.clear();
+  previousMatch = null;
+  storeSearches();
+  renderedQuery = undefined;
+  searchBox.focus();
+  showPlaces();
 });
 document.addEventListener('pointerdown', event => {
   if (!event.target.closest('#placeSearch')) hidePlaces();
