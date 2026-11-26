@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <path id="tower" d="M7 20.5v-16h10v16Z"/>
+  </defs>
+
+  <symbol id="apartment" viewBox="0 0 24 24">
+    <use href="#tower"/>
+    <path d="M10 8.5h.6m2.8 0h.6M10 12h.6m2.8 0h.6M10.75 20.5v-3.75h2.5v3.75"/>
+  </symbol>
+
+  <symbol id="apartments" viewBox="0 0 24 24">
+    <path d="M9.5 6.25V2.5h10v16h-5" opacity=".8"/>
+    <path d="M16.7 6.5h.5m-.5 3.5h.5m-.5 3.5h.5" opacity=".8"/>
+    <use href="#tower" transform="translate(-2.5 1.75)"/>
+    <path d="M7.5 10.25h.6m2.8 0h.6M7.5 13.75h.6m2.8 0h.6M8.25 22.25V18.5h2.5v3.75"/>
+  </symbol>
+
+  <symbol id="school" viewBox="0 0 24 24">
+    <path d="M2.5 21h19M4 21v-9h4m8 0h4v9M8 21V8l4-3 4 3v13M10.5 21v-4h3v4m-8-1.5h.5m12 0h.5"/>
+    <circle cx="12" cy="11.75" r="1.2"/>
+    <path d="M5.8 15.4h.4m11.6 0h.4"/>
+  </symbol>
+</svg>

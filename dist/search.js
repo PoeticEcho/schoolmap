@@ -281,7 +281,7 @@ function showPlaces() {
   const recent = !raw && choices.length > 0;
   $('recentSearchHeader').hidden = !recent;
   suggestions.setAttribute('aria-label', recent ? '최근 검색' : '검색 결과');
-  const icons = {town: locationIcon, hub: locationIcon, school: schoolIcon, apartment: apartmentIcon};
+  const icons = {town: locationIcon, hub: locationIcon, school: placeSymbol('school'), apartment: placeSymbol('apartment')};
   suggestions.innerHTML = choices.map((entry, index) => {
     const area = entry.type === 'apartment' ? '인근 학원가 · ' + entry.area : entry.area;
     const label = entry.type === 'school' ? entry.place.level : kinds[entry.type];

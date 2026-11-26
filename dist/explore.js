@@ -119,7 +119,7 @@ function mountExplorerMap({apartment, view}) {
   else m.fitBounds([[33.1, 125.5], [38.6, 129.65]], {padding: [8, 8], maxZoom: 8});
 
   const outlines = L.layerGroup(hubBounds.map(({place}) => academyBoundary(place, () => openExplorerHub(place))));
-  const markers = placeMarkerGroup(m);
+  const markers = {apartment: placeMarkerGroup(m, 'apartment'), school: placeMarkerGroup(m, 'school')};
   const plotted = new Map();
   let selectedApartment;
   if (apartment) {
@@ -145,22 +145,24 @@ function mountExplorerMap({apartment, view}) {
     const showPlaces = m.getZoom() >= 13;
     const bounds = m.getBounds();
     const next = new Set(showPlaces ? viewportPlaces(bounds.pad(.25)).filter(item => item.place !== apartment) : []);
-    const removed = [], added = [];
+    const removed = {apartment: [], school: []}, added = {apartment: [], school: []};
     for (const [item, marker] of plotted) {
       if (!next.has(item)) {
         plotted.delete(item);
-        removed.push(marker);
+        removed[item.type].push(marker);
       }
     }
     for (const item of next) {
       if (!plotted.has(item)) {
         const marker = drawPoint(item);
         plotted.set(item, marker);
-        added.push(marker);
+        added[item.type].push(marker);
       }
     }
-    if (removed.length) markers.removeLayers(removed);
-    if (added.length) markers.addLayers(added);
+    for (const type of Object.keys(markers)) {
+      if (removed[type].length) markers[type].removeLayers(removed[type]);
+      if (added[type].length) markers[type].addLayers(added[type]);
+    }
 
     $('exploreZoomHint').hidden = showPlaces || (!visibleLayers.school && !visibleLayers.apartment);
     const status = $('exploreStatus');
