@@ -1,67 +1,152 @@
 const searchBox = $('search'), suggestions = $('placeResults'), searchPopover = $('searchPopover');
-let searchType = 'all', choices = [], highlighted = -1, searchIndex;
+let searchType = 'all', choices = [], highlighted = -1, searchFrame, renderedQuery, renderedType, previousMatch;
+const searchIndex = {};
+const koreanOrder = new Intl.Collator('ko').compare;
 const kinds = {school: '학교', hub: '학원가', town: '동네', apartment: '아파트'};
 const locationIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>';
 const initials = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
-const normalize = value => value.normalize('NFC').toLocaleLowerCase('ko').replace(/[\s·.,()\-]/g, '');
-const choseong = value => value.replace(/[가-힣]/g, char => initials[Math.floor((char.charCodeAt(0) - 44032) / 588)]);
-
-function getSearchIndex() {
-  if (searchIndex) return searchIndex;
-  function entry(type, place, name, area, aliases = []) {
-    const names = [name, ...aliases].map(normalize);
-    return {type, place, name, area, names, initials: names.map(choseong), context: normalize(area)};
+const normalize = value => value.normalize('NFC').toLowerCase().replace(/[\s·.,()\-]/g, '');
+function choseong(value) {
+  let result = '';
+  for (let i = 0; i < value.length; i++) {
+    const syllable = value.charCodeAt(i) - 0xAC00;
+    // Unicode orders precomposed Hangul in blocks of 588 syllables by initial.
+    result += syllable >= 0 && syllable < 11172 ? initials[Math.floor(syllable / 588)] : value[i];
   }
-  searchIndex = [
-    ...D.towns.map(town => entry('town', town, town.d, town.id)),
-    ...D.hubs.map(hub => entry('hub', hub, hub.name, hub.town + ' ' + hub.road, [hub.name.split(' · ')[0], hub.road])),
-    ...schoolPlaces.map(school => {
-      const name = school.name.replace(new RegExp('^' + school.p), '');
-      const short = name.replace(/초등학교|중학교|고등학교$/, ending => ending[0]);
-      return entry('school', school, school.name, school.address, [name, short]);
-    }),
-    ...apartmentPlaces.map(apt => {
-      const {hub} = nearestCluster(apt);
-      return entry('apartment', apt, apt[0], hub.town, [apt[0] + '아파트']);
-    })
-  ];
-  return searchIndex;
+  return result;
+}
+
+function searchEntry(type, place, name, area, aliases = []) {
+  const names = [name, ...aliases].map(normalize);
+  const context = normalize(area);
+  return {type, place, name, area, names, context, initials: names.map(choseong),
+    combined: names.map(value => context + value)};
+}
+
+const searchSources = {
+  town: {rows: D.towns, build: town => searchEntry('town', town, town.d, town.id)},
+  hub: {rows: D.hubs, build: hub => searchEntry('hub', hub, hub.name, hub.town + ' ' + hub.road,
+    [hub.name.split(' · ')[0], hub.road])},
+  school: {rows: schoolPlaces, build: school => {
+    const name = school.name.startsWith(school.p) ? school.name.slice(school.p.length) : school.name;
+    const short = name.replace(/초등학교|중학교|고등학교$/, ending => ending[0]);
+    return searchEntry('school', school, school.name, school.address, [name, short]);
+  }},
+  apartment: {rows: apartmentPlaces, build: apt => {
+    const {hub} = nearestCluster(apt);
+    return searchEntry('apartment', apt, apt[0], hub.town, [apt[0] + '아파트']);
+  }}
+};
+const searchTypes = Object.keys(searchSources);
+
+function indexPlaces(type, count) {
+  const {rows, build} = searchSources[type];
+  const entries = searchIndex[type] ??= [];
+  const end = Math.min(rows.length, entries.length + count);
+  for (let i = entries.length; i < end; i++) entries.push(build(rows[i]));
+  return entries;
+}
+
+function getSearchIndex(type) {
+  if (type === 'all') return searchIndex.all ??= searchTypes.flatMap(getSearchIndex);
+  return indexPlaces(type, Infinity);
+}
+
+function warmSearchIndex(index = 0) {
+  if (index === searchTypes.length) return;
+  const type = searchTypes[index];
+  const next = deadline => {
+    const stop = performance.now() + 8;
+    let entries;
+    do {
+      entries = indexPlaces(type, 256);
+    } while (entries.length < searchSources[type].rows.length && deadline?.timeRemaining() > 1 && performance.now() < stop);
+    warmSearchIndex(index + Number(entries.length === searchSources[type].rows.length));
+  };
+  if ('requestIdleCallback' in window) requestIdleCallback(next);
+  else setTimeout(next, 35);
+}
+warmSearchIndex();
+
+function scoreName(names, query) {
+  let score = 3;
+  for (const name of names) {
+    if (name === query) return 0;
+    if (name.startsWith(query)) score = 1;
+    else if (score === 3 && name.includes(query)) score = 2;
+  }
+  return score;
+}
+
+function orderMatches(a, b) {
+  return a.score - b.score || a.nearby - b.nearby ||
+    (a.entry.place.nat ?? 0) - (b.entry.place.nat ?? 0) ||
+    koreanOrder(a.entry.name, b.entry.name) || koreanOrder(a.entry.area, b.entry.area);
+}
+
+function addTopMatch(bucket, match, limit) {
+  if (bucket.length === limit && orderMatches(match, bucket.at(-1)) >= 0) return;
+  const position = bucket.findIndex(result => orderMatches(match, result) < 0);
+  if (position === -1) bucket.push(match);
+  else bucket.splice(position, 0, match);
+  if (bucket.length > limit) bucket.pop();
 }
 
 function findPlaces(raw) {
+  raw = raw.trim();
   const query = normalize(raw);
-  const tokens = raw.trim().split(/\s+/).map(normalize).filter(Boolean);
+  if (!query) {
+    previousMatch = null;
+    return [];
+  }
+  const tokens = raw.split(/\s+/).map(normalize).filter(Boolean);
   const initialQuery = /^[ㄱ-ㅎ]{2,}$/.test(query);
-  const rank = raw.trim().match(/^(?:rank\s*=\s*)?(\d+)\s*위$/i) || raw.trim().match(/^rank\s*=\s*(\d+)$/i);
+  const rank = raw.match(/^(?:rank\s*=\s*)?(\d+)\s*위$/i) || raw.match(/^rank\s*=\s*(\d+)$/i);
   if (rank && (searchType === 'hub' || searchType === 'all')) {
-    return getSearchIndex().filter(entry => entry.type === 'hub' && entry.place.nat === Number(rank[1])).slice(0, 12);
+    return getSearchIndex('hub').filter(entry => entry.place.nat === Number(rank[1])).slice(0, 12);
   }
-  if (!query) return [];
   const selected = activeSchool || H.get(key) || townIndex.get(key);
-  const nearby = selected ? normalize(activeSchool ? activeSchool.address.split(' ').slice(1, 2).join(' ') :
-    (selected.town || selected.id).split(' ').slice(1, 2).join(' ')) : '';
-  const matches = [];
-  for (const entry of getSearchIndex()) {
-    if (searchType !== 'all' && entry.type !== searchType) continue;
-    const names = initialQuery ? entry.initials : entry.names;
+  const nearby = selected ? normalize((activeSchool ? activeSchool.address : selected.town || selected.id).split(' ')[1] || '') : '';
+  const single = tokens.length === 1;
+  // Extending one token can only match entries that already matched its shorter prefix.
+  const candidates = single && previousMatch?.type === searchType && previousMatch.initialQuery === initialQuery &&
+    query.startsWith(previousMatch.query) ? previousMatch.entries : getSearchIndex(searchType);
+  const buckets = {};
+  const matched = [];
+  const limit = searchType === 'all' ? 5 : 12;
+  for (const entry of candidates) {
+    const score = scoreName(initialQuery ? entry.initials : entry.names, query);
     const context = entry.context;
-    const score = names.includes(query) ? 0 :
-      names.some(name => name.startsWith(query)) ? 1 :
-      names.some(name => name.includes(query)) ? 2 :
-      !initialQuery && (context.includes(query) || names.some(name => (context + name).includes(query)) ||
-        (tokens.length > 1 && tokens.every(token => context.includes(token) || names.some(name => name.includes(token))))) ? 3 : 9;
-    if (score < 9) matches.push({entry, score, nearby: nearby && context.includes(nearby) ? 0 : 1});
+    if (score === 3) {
+      if (initialQuery) continue;
+      const includesQuery = context.includes(query) || entry.combined.some(value => value.includes(query));
+      if (!includesQuery && (single || !tokens.every(token =>
+        context.includes(token) || entry.names.some(name => name.includes(token))))) continue;
+    }
+    if (single) matched.push(entry);
+    const bucket = buckets[entry.type] ??= [];
+    addTopMatch(bucket, {entry, score, nearby: nearby && context.includes(nearby) ? 0 : 1}, limit);
   }
-  matches.sort((a, b) => a.score - b.score || a.nearby - b.nearby ||
-    (a.entry.place.nat ?? 0) - (b.entry.place.nat ?? 0) ||
-    a.entry.name.localeCompare(b.entry.name, 'ko') || a.entry.area.localeCompare(b.entry.area, 'ko'));
-  if (searchType !== 'all') return matches.slice(0, 12).map(match => match.entry);
-  const counts = {};
-  return matches.filter(({entry}) => (counts[entry.type] = (counts[entry.type] || 0) + 1) <= 5)
-    .slice(0, 12).map(match => match.entry);
+  previousMatch = single ? {type: searchType, initialQuery, query, entries: matched} : null;
+  return Object.values(buckets).flat().sort(orderMatches).slice(0, 12).map(match => match.entry);
+}
+
+function cancelSearchFrame() {
+  if (searchFrame === undefined) return;
+  cancelAnimationFrame(searchFrame);
+  searchFrame = undefined;
+}
+
+function schedulePlaces() {
+  if (searchFrame !== undefined) return;
+  searchFrame = requestAnimationFrame(() => {
+    searchFrame = undefined;
+    showPlaces();
+  });
 }
 
 function hidePlaces() {
+  cancelSearchFrame();
   searchPopover.hidden = true;
   highlighted = -1;
   searchBox.setAttribute('aria-expanded', 'false');
@@ -69,7 +154,11 @@ function hidePlaces() {
 }
 
 function showPlaces() {
+  cancelSearchFrame();
   const raw = searchBox.value.trim();
+  if (!searchPopover.hidden && raw === renderedQuery && searchType === renderedType) return;
+  renderedQuery = raw;
+  renderedType = searchType;
   choices = findPlaces(raw);
   const icons = {town: locationIcon, hub: locationIcon, school: schoolIcon, apartment: apartmentIcon};
   suggestions.innerHTML = choices.map((entry, index) => {
@@ -111,13 +200,13 @@ function selectPlace(type, place) {
 }
 
 searchBox.addEventListener('focus', showPlaces);
-searchBox.addEventListener('input', event => { if (!event.isComposing) showPlaces(); });
-searchBox.addEventListener('compositionend', showPlaces);
+searchBox.addEventListener('input', schedulePlaces);
+searchBox.addEventListener('compositionend', schedulePlaces);
 searchBox.addEventListener('keydown', event => {
   if (event.isComposing || event.keyCode === 229) return;
   if (event.key === 'Escape') { hidePlaces(); return; }
   if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
-  if (searchPopover.hidden) showPlaces();
+  showPlaces();
   if (!choices.length) return;
   event.preventDefault();
   highlighted = event.key === 'ArrowDown' ? (highlighted + 1) % choices.length :
@@ -131,7 +220,7 @@ searchBox.addEventListener('keydown', event => {
 });
 $('placeSearch').addEventListener('submit', event => {
   event.preventDefault();
-  if (searchPopover.hidden) showPlaces();
+  showPlaces();
   const match = choices[Math.max(0, highlighted)];
   if (match) selectPlace(match.type, match.place);
   else searchBox.focus();

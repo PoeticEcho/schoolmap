@@ -4,7 +4,7 @@ const latLng=p=>[p[1],p[0]];
 const hubRangeRequests = new Map();
 const rangeLabel = meters => meters === 1000 ? '1km' : meters + 'm';
 const areaRanges = [300, 500, 1000];
-const mapPadding = {paddingTopLeft: [20, 108], paddingBottomRight: [20, 26], maxZoom: 17, animate: false};
+const mapPadding = {paddingTopLeft: [20, 64], paddingBottomRight: [20, 26], maxZoom: 17, animate: false};
 
 function stopRoute() {
   serial++;
@@ -38,9 +38,11 @@ function nearbyPanel(g) {
 }
 
 function mapFrame(label, controls, legend) {
+  const rangeControls = $('rangeControls');
+  rangeControls.hidden = !controls;
+  rangeControls.innerHTML = controls;
   $('mapPanel').innerHTML = '<div class="map-canvas"><div id="street" aria-label="' + E(label) +
-    '"></div>' + (controls ? '<div class="range-controls">' + controls + '</div>' : '') +
-    '<span id="tileNote" class="tile-note" role="status"></span></div><div class="maplegend">' + legend + '</div>';
+    '"></div><span id="tileNote" class="tile-note" role="status"></span></div><div class="maplegend">' + legend + '</div>';
 }
 
 function addStreetTiles(m) {
@@ -139,7 +141,7 @@ function loadHubRanges(id) {
 
 function mountMap(g, renderDetails) {
   const data = g.records || D.maps[g.id];
-  const controls = '<span>' + (g.records ? '학교 반경' : '학원가 경계 기준') + '</span>' + areaRanges.map(meters =>
+  const controls = '<span class="range-context">' + (g.records ? '학교 반경' : '학원가 경계 기준') + '</span>' + areaRanges.map(meters =>
     '<button type="button" data-range="' + meters + '">' + rangeLabel(meters) + '</button>').join('');
   mapFrame(g.name + ' 주변 지도', controls,
     '<span><i class="swatch hub-swatch"></i>학원가 경계</span><label><input id="showS" type="checkbox" checked>' +
@@ -188,7 +190,7 @@ function mountMap(g, renderDetails) {
     stopRoute();
     m.closePopup();
     routeLayers.clearLayers();
-    $('mapPanel').querySelectorAll('[data-range]').forEach(button => {
+    $('rangeControls').querySelectorAll('[data-range]').forEach(button => {
       button.setAttribute('aria-pressed', String(Number(button.dataset.range) === distance));
     });
     $('rangeKey').textContent = (g.records ? '학교 반경 ' : '학군지 · ') + rangeLabel(distance) + ' 이내';
@@ -253,7 +255,7 @@ async function selectApt(g,r,index,marker){
  routeLayers.clearLayers();document.querySelectorAll('[data-apt]').forEach((el,i)=>el.classList.toggle('selected',i===index));
  L.circleMarker(ll,{color:'#194651',weight:3,radius:11,fill:false,interactive:false}).addTo(routeLayers);
  const head='<strong>'+E(r[0])+'</strong>'+nearestDescription(r)+(r.length===6?'<small>'+E(r[3].date)+' 사용승인 · '+E(r[3].type)+' · K-apt</small>':''),card=$('routeCard');
- const popup=L.popup({maxWidth:265,autoPan:true,autoPanPaddingTopLeft:[12,106],autoPanPaddingBottomRight:[12,18]})
+ const popup=L.popup({maxWidth:265,autoPan:true,autoPanPaddingTopLeft:[12,64],autoPanPaddingBottomRight:[12,18]})
    .setLatLng(m.hasLayer(marker) ? marker.getLatLng() : ll);
  let opened = false;
  function showRoute(html){

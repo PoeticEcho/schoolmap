@@ -68,11 +68,12 @@
 </header>
 <main class="layout">
   <section class="atlas" aria-label="교육 지도">
-    <div id="mapPanel"></div>
-    <div class="map-actions">
-      <button id="unselect" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z"/></svg>자유 탐색</button>
-      <button id="randomHub" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3c3 0 5 10 8 10h5m-3-3 3 3-3 3M4 17h3c1.2 0 2.1-1.4 3-3m4-5c.4-1.2 1.1-2 2-2h4m-3-3 3 3-3 3"/></svg>랜덤 학원가</button>
+    <div class="map-toolbar" role="group" aria-label="지도 조작">
+      <button id="unselect" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z"/></svg>지도 탐색</button>
+      <button id="randomHub" type="button" aria-label="랜덤 학원가" title="랜덤 학원가"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3c3 0 5 10 8 10h5m-3-3 3 3-3 3M4 17h3c1.2 0 2.1-1.4 3-3m4-5c.4-1.2 1.1-2 2-2h4m-3-3 3 3-3 3"/></svg><span><span class="map-action-prefix">랜덤 </span>학원가</span></button>
+      <div class="range-controls" id="rangeControls" role="group" aria-label="비교 반경" hidden></div>
     </div>
+    <div id="mapPanel"></div>
   </section>
   <aside class="sidebar" aria-label="선택 지역과 순위">
     <section class="card" id="detail" aria-label="선택 지역"></section>

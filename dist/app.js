@@ -130,7 +130,7 @@ $('rows').addEventListener('click', event => {
   }
 });
 
-$('mapPanel').addEventListener('click', event => {
+$('rangeControls').addEventListener('click', event => {
   const button = event.target.closest('[data-range]');
   if (!button || !updateMapRange) return;
   const next = Number(button.dataset.range);

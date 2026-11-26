@@ -127,6 +127,7 @@ button svg, .searchfield > svg, .place-icon svg, .place-pin svg, .place-group sv
   position: sticky;
   top: 18px;
   min-width: 0;
+  container-type: inline-size;
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 20px;
@@ -135,30 +136,41 @@ button svg, .searchfield > svg, .place-icon svg, .place-pin svg, .place-group sv
 .map-canvas { position: relative; border-radius: 19px 19px 0 0; isolation: isolate; }
 #street { width: 100%; height: clamp(430px, calc(100dvh - 188px), 900px); border-radius: inherit; background: #e8eee6; font-family: inherit; }
 .leaflet-tile-pane { filter: saturate(.68); }
-.map-actions, .range-controls {
+.map-toolbar {
   z-index: 650;
   position: absolute;
+  inset: 10px auto auto 10px;
   display: flex;
   align-items: center;
-  gap: 5px;
-  max-width: calc(100% - 24px);
-  left: 12px;
-}
-.map-actions { top: 12px; }
-.range-controls {
-  top: 62px;
-  padding: 4px;
+  gap: 3px;
+  max-width: calc(100% - 20px);
+  padding: 3px;
+  background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: #fff;
   box-shadow: 0 2px 12px #2449361c;
 }
-.range-controls span { padding: 0 7px; color: var(--muted); font-size: 12px; }
-.map-actions button, .range-controls button { min-height: 36px; padding: 0 10px; border-radius: 9px; background: var(--paper); font-size: 13px; font-weight: 750; white-space: nowrap; }
-.map-actions button { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; border: 1px solid var(--line); box-shadow: 0 2px 12px #2449361c; }
-.map-actions button svg { width: 17px; height: 17px; color: var(--green); }
-.range-controls button[aria-pressed="true"], .map-actions button:hover { background: var(--lime); color: var(--green-dark); }
-.range-controls button:not([aria-pressed="true"]):hover { background: var(--mint); }
+.range-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: 4px;
+  border-left: 1px solid var(--line);
+}
+.range-context { padding-inline: 5px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.map-toolbar button {
+  min-height: 40px;
+  padding-inline: 10px;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.map-toolbar > button { display: inline-flex; align-items: center; gap: 4px; }
+.map-toolbar > button svg { width: 16px; height: 16px; color: var(--green); }
+.map-toolbar button[aria-pressed="true"] { background: var(--lime); color: var(--green-dark); }
+.map-toolbar button:not([aria-pressed="true"]):not(:disabled):hover { background: var(--mint); }
 .tile-note { position: absolute; z-index: 600; left: 12px; bottom: 8px; max-width: 70%; padding: 4px 8px; background: #fffffff0; border-radius: 6px; color: var(--muted); font-size: 11px; }
 .tile-note:empty { display: none; }
 .maplegend { display: flex; flex-wrap: wrap; gap: 7px 16px; min-height: 44px; align-items: center; padding: 8px 13px; color: var(--muted); font-size: 12px; }
@@ -250,6 +262,15 @@ tr.sel { background: var(--mint); }
 .method { grid-column: 1 / -1; min-width: 0; color: var(--muted); font-size: 12px; }
 .method p { margin: 5px 0; max-width: 880px; }
 
+@container (max-width: 520px) {
+  .map-action-prefix, .range-context { display: none; }
+  .map-toolbar button { padding-inline: 7px; font-size: 12px; }
+}
+@container (max-width: 345px) {
+  .map-toolbar { left: 7px; max-width: calc(100% - 14px); }
+  .map-toolbar > button svg { display: none; }
+  .map-toolbar button { padding-inline: 6px; }
+}
 @media (max-width: 900px) {
   .site-header-inner { grid-template-columns: 1fr auto; padding: 10px 14px 12px; gap: 9px; }
   .brand img { width: 38px; height: 38px; }
